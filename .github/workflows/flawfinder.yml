@@ -30,10 +30,12 @@ jobs:
         run: |
           flawfinder . > flawfinder_raw.txt
           cat flawfinder_raw.txt
-          if grep -q "Hits@level = \[5\]   0" flawfinder_raw.txt; then
-            echo "✅ No level 5 vulnerabilities found.";
-          else
+          level5_hits=$(grep -oP '\[5\]\s+\K\d+' flawfinder_raw.txt | head -1)
+          echo "Level 5 hits: $level5_hits"
+          if [ "$level5_hits" -gt 0 ]; then
             echo "❌ Level 5 vulnerabilities detected! Failing build."; exit 1;
+          else
+            echo "✅ No level 5 vulnerabilities found.";
           fi
 
       - name: Upload security report
