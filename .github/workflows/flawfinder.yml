@@ -1,0 +1,38 @@
+name: Flawfinder Security Analysis
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  flawfinder:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v3
+        with:
+          python-version: '3.9'
+          
+      - name: Install Flawfinder
+        run: |
+          python -m pip install --upgrade pip
+          pip install flawfinder
+          
+      - name: Run Flawfinder
+        run: |
+          flawfinder --html --context --minlevel=3 . > flawfinder_report.html
+        
+      - name: Check for high-risk vulnerabilities
+        run: |
+          # Fail build if level 5 vulnerabilities exist
+          ! flawfinder --quiet --minlevel=5 .
+          
+      - name: Upload security report
+        uses: actions/upload-artifact@v2
+        with:
+          name: flawfinder-report
+          path: flawfinder_report.html
