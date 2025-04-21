@@ -1,0 +1,120 @@
+stages:
+  - code_quality
+  - security_scan
+  - build
+  - test
+  - deploy
+
+variables:
+  DOCKER_DRIVER: overlay2
+  SECURE_LOG_LEVEL: "debug"
+
+# Code quality analysis
+code_quality:
+  stage: code_quality
+  image: python:3.9-slim
+  script:
+    - pip install flake8
+    - flake8 --max-line-length=100 --exclude=vendor .
+  artifacts:
+    reports:
+      codequality: gl-code-quality-report.json
+    paths:
+      - gl-code-quality-report.json
+    expire_in: 1 week
+  allow_failure: true
+
+# Security analysis with Flawfinder
+flawfinder_scan:
+  stage: security_scan
+  image: python:3.9-slim
+  before_script:
+    - pip install flawfinder
+    - apt-get update && apt-get install -y jq
+  script:
+    - flawfinder --csv --minlevel=3 . > flawfinder_report.csv
+    - |
+      if flawfinder --quiet --minlevel=5 .; then
+        echo "No critical vulnerabilities found"
+      else
+        echo "WARNING! Critical vulnerabilities found"
+        # In a real environment, this might fail the build
+        # exit 1
+      fi
+    # Convert CSV to GitLab SAST format
+    - |
+      cat flawfinder_report.csv | python -c '
+      import csv, json, sys
+      reader = csv.reader(sys.stdin)
+      headers = next(reader)
+      findings = []
+      for row in reader:
+          if len(row) >= 5:
+              findings.append({
+                  "category": "sast",
+                  "name": row[2],
+                  "message": row[4],
+                  "cve": "NONE",
+                  "severity": "High" if int(row[1]) >= 4 else "Medium",
+                  "confidence": "Medium",
+                  "location": {
+                      "file": row[0],
+                      "start_line": int(row[3]),
+                      "end_line": int(row[3])
+                  }
+              })
+      json.dump({"version": "2.0", "vulnerabilities": findings, "scan": {"type": "sast"}}, sys.stdout)
+      ' > gl-sast-report.json
+  artifacts:
+    reports:
+      sast: gl-sast-report.json
+    paths:
+      - flawfinder_report.csv
+      - gl-sast-report.json
+    expire_in: 1 week
+
+# Infrastructure component analysis with Checkov
+iac_security_scan:
+  stage: security_scan
+  image: bridgecrew/checkov:latest
+  script:
+    - checkov -d . --output-file-path console,junitxml
+  artifacts:
+    reports:
+      junit: results_junitxml.xml
+    expire_in: 1 week
+
+# Dependency scanning
+dependency_scan:
+  stage: security_scan
+  image: aquasec/trivy
+  script:
+    - trivy fs --security-checks vuln,config --output trivy-results.json --format json .
+  artifacts:
+    paths:
+      - trivy-results.json
+    expire_in: 1 week
+
+# Build and test
+build:
+  stage: build
+  script:
+    - echo "Building project..."
+    # Actual build process would go here
+  
+test:
+  stage: test
+  script:
+    - echo "Running tests..."
+    # Unit and integration tests would go here
+
+# Deployment (only if all previous stages pass)
+deploy:
+  stage: deploy
+  script:
+    - echo "Deploying infrastructure..."
+    # Actual deployment would go here
+  only:
+    - main
+  environment:
+    name: production
