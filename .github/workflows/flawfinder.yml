@@ -25,12 +25,17 @@ jobs:
       - name: Run Flawfinder
         run: |
           flawfinder --html --context --minlevel=3 . > flawfinder_report.html
-        
-      - name: Check for high-risk vulnerabilities
+
+      - name: Check for high-risk vulnerabilities (level 5)
         run: |
-          # Fail build if level 5 vulnerabilities exist
-          ! flawfinder --quiet --minlevel=5 .
-          
+          flawfinder . > flawfinder_raw.txt
+          cat flawfinder_raw.txt
+          if grep -q "Hits@level = \[5\]   0" flawfinder_raw.txt; then
+            echo "✅ No level 5 vulnerabilities found.";
+          else
+            echo "❌ Level 5 vulnerabilities detected! Failing build."; exit 1;
+          fi
+
       - name: Upload security report
         uses: actions/upload-artifact@v4
         with:
